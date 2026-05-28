@@ -1,145 +1,698 @@
-# Vortex-UI Round 2 — Critical Refinement & Position Update
+# Vortex-UI — FINAL DELIVERY (Round 3 of 3)
 
-## Where I Fully Agree With Orion-SC (Critical Path Lock-In)
-
-**I'm adopting Orion-SC's data contract as my HTML/DOM blueprint—this is exactly the constraint discipline this project needs.** Their insistence on a formalized shape eliminates the speculation I was operating under in Round 1. Specifically:
-
-- ✓ **The `current` object structure** (temperature, humidity, windSpeed, condition.{code, emoji, description}) is clean and lets me build typed slot elements (`<span data-testid="current-temperature"></span>`) that won't thrash with late-binding surprises.
-- ✓ **The forecast array contract** (5 objects, date-keyed, consistent structure) means I can pre-allocate CSS Grid with `grid-template-columns: repeat(5, 1fr)` and trust the data will fill exactly 5 cells—no layout shift risk.
-- ✓ **The error object structure** (`{message: string}` or null) lets me build a single, reusable error state template that I inject once, eliminating DOM thrashing.
-- ✓ **The localStorage + debounce optimization** Orion-SC mandated is *not* a UI layer concern (JavaScript handles it), but it validates my decision to use `aria-busy="true"` on the search input during geocoding—users will see that state fire faster because of their prefetch logic.
-
-**This contract acceptance is non-negotiable architecture, not negotiation.**
+I've reviewed all colleague contributions and QA feedback. **Delivering complete, production-ready HTML + CSS + DOM injection API.** All files follow the locked data contract, implement WCAG AA accessibility, and support graceful degradation (current weather without forecast per Orion-SC's decision).
 
 ---
 
-## Where I Strongly Challenge Nexus-7 (Technical Debt Risk)
+## FILE 1: index.html
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Open-Meteo Weather Dashboard - Real-time weather forecasts, no API key required">
+  <title>Weather Dashboard</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Skip to main content (accessibility) -->
+  <a href="#weather-content" class="skip-link">Skip to main content</a>
 
-**I have three material concerns with Nexus-7's API integration proposal:**
+  <!-- Header with Search -->
+  <header role="banner" class="header">
+    <div class="container">
+      <h1 class="app-title">⛅ Weather Dashboard</h1>
+      <div class="search-container">
+        <form id="search-form" class="search-form" novalidate>
+          <div class="search-wrapper">
+            <label for="city-search" class="search-label">Find weather for any city</label>
+            <div class="search-input-wrapper">
+              <input 
+                id="city-search" 
+                type="text" 
+                class="city-input"
+                aria-label="Search for a city"
+                aria-autocomplete="list"
+                aria-controls="match-list"
+                aria-expanded="false"
+                placeholder="Enter city name (e.g., London, New York, Tokyo)"
+                data-testid="city-search"
+                autocomplete="off"
+                required
+              />
+              <button id="search-btn" type="submit" class="search-button" aria-label="Search for weather">
+                Search
+              </button>
+            </div>
+          </div>
 
-### 1. **Missing Error State Granularity — Production Risk**
+          <!-- Geocoding Match List (for ambiguous searches) -->
+          <div id="match-list" class="match-list" role="listbox" hidden aria-label="City suggestions">
+          </div>
+        </form>
+      </div>
+    </div>
+  </header>
 
-Nexus-7 proposed: *"return structured error objects `{error: true, message: "City not found"}` instead of throwing"*
+  <!-- Loading Skeleton State -->
+  <div id="loading-skeleton" class="loading-skeleton" data-testid="loading-skeleton" hidden aria-hidden="true">
+    <div class="container">
+      <div class="skeleton-location"></div>
+      <div class="skeleton-card skeleton-current"></div>
+      <div class="skeleton-grid">
+        <div class="skeleton-card"></div>
+        <div class="skeleton-card"></div>
+        <div class="skeleton-card"></div>
+        <div class="skeleton-card"></div>
+        <div class="skeleton-card"></div>
+      </div>
+    </div>
+  </div>
 
-**My challenge:** This conflates two distinct failure modes:
-- **Geocoding failure** (city not found, typo, ambiguous match) → should show an *input validation* error with autocomplete suggestions or "Did you mean?" UI
-- **Weather API failure** (network timeout, service down, coordinates out of bounds) → should show a *system error* with retry logic
+  <!-- Error Alert Region -->
+  <div id="error-container" class="error-container" role="alert" aria-live="assertive" aria-atomic="true" hidden>
+    <div class="container">
+      <div class="error-content">
+        <div class="error-header">
+          <span class="error-icon">⚠️</span>
+          <span id="error-message" class="error-message" data-testid="error-message"></span>
+        </div>
+        <div class="error-actions">
+          <button id="retry-btn" class="btn-retry" hidden aria-label="Retry search">
+            Retry Search
+          </button>
+          <button id="refine-btn" class="btn-refine" hidden aria-label="Refine your search">
+            Refine Search
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
 
-**Nexus-7's flat error structure can't distinguish these.** I need:
-```javascript
-{
-  error: true,
-  type: "GEOCODING_NOT_FOUND" | "GEOCODING_AMBIGUOUS" | "WEATHER_TIMEOUT" | "WEATHER_INVALID_COORDS",
-  message: string,
-  recoveryAction: "RETRY" | "REFINE_SEARCH" | "CONTACT_SUPPORT"
+  <!-- Main Weather Content -->
+  <main id="weather-content" class="weather-content" hidden>
+    <div class="container">
+      
+      <!-- Location Header -->
+      <header role="region" aria-label="Location information" class="location-header">
+        <div class="location-info">
+          <h2 class="location-title">
+            <span data-testid="location-name" class="location-name">—</span><span class="separator">,</span>
+            <span data-testid="location-country" class="location-country">—</span>
+          </h2>
+          <p class="location-timezone" data-testid="location-timezone" role="doc-subtitle">—</p>
+        </div>
+      </header>
+
+      <!-- Current Weather Card -->
+      <section role="region" aria-label="Current weather conditions" class="current-section">
+        <div class="weather-card current-weather" data-testid="current-weather" role="region" aria-live="polite" aria-atomic="true">
+          <div class="current-condition-visual">
+            <div class="emoji-container">
+              <span id="current-emoji" class="emoji-large" aria-hidden="true">☀️</span>
+            </div>
+            <div class="current-status">
+              <span data-testid="current-condition" class="condition-text">—</span>
+            </div>
+          </div>
+          <div class="current-details">
+            <div class="detail-row">
+              <span class="detail-label">Temperature</span>
+              <span class="detail-value" data-testid="current-temperature">—<span class="unit">°C</span></span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Humidity</span>
+              <span class="detail-value" data-testid="current-humidity">—<span class="unit">%</span></span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Wind Speed</span>
+              <span class="detail-value" data-testid="current-wind-speed">—<span class="unit">km/h</span></span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 5-Day Forecast Section -->
+      <section role="region" aria-label="5-day forecast" class="forecast-section">
+        <h2 class="forecast-title">5-Day Forecast</h2>
+        <div class="forecast-grid" data-testid="forecast-grid" role="grid" aria-label="Forecast cards">
+          <!-- Populated by JavaScript with 5 forecast cards -->
+        </div>
+        <div id="forecast-unavailable" class="forecast-unavailable" hidden role="status" aria-live="polite">
+          <p>Forecast data temporarily unavailable, but current weather is displayed above.</p>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- Scripts (no dependencies, vanilla JS only) -->
+  <script src="weather-codes.js"></script>
+  <script src="weather-api.js"></script>
+  <script src="weather-ui.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
+```
+
+## FILE 2: styles.css
+```css
+/* ============================================================================
+   WEATHER DASHBOARD - PRODUCTION CSS
+   Accessibility-first, responsive, dark mode support
+   ============================================================================ */
+
+/* ROOT VARIABLES */
+:root {
+  /* Weather Condition Colors (semantic, WCAG AA compliant) */
+  --weather-sunny: #fbbf24;
+  --weather-partly-cloudy: #9ca3af;
+  --weather-cloudy: #6b7280;
+  --weather-rainy: #3b82f6;
+  --weather-snowy: #e0f2fe;
+  --weather-stormy: #7c3aed;
+
+  /* Semantic Colors */
+  --color-error: #dc2626;
+  --color-warning: #f97316;
+  --color-info: #2563eb;
+  --color-success: #16a34a;
+
+  /* Neutral Palette */
+  --color-white: #ffffff;
+  --color-black: #000000;
+  --color-gray-50: #f9fafb;
+  --color-gray-100: #f3f4f6;
+  --color-gray-200: #e5e7eb;
+  --color-gray-300: #d1d5db;
+  --color-gray-400: #9ca3af;
+  --color-gray-500: #6b7280;
+  --color-gray-600: #4b5563;
+  --color-gray-700: #374151;
+  --color-gray-800: #1f2937;
+  --color-gray-900: #111827;
+
+  /* Light Mode (default) */
+  --bg-primary: var(--color-white);
+  --bg-secondary: var(--color-gray-50);
+  --bg-tertiary: var(--color-gray-100);
+  --text-primary: var(--color-gray-900);
+  --text-secondary: var(--color-gray-600);
+  --text-tertiary: var(--color-gray-500);
+  --border-color: var(--color-gray-200);
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+
+  /* Spacing Scale */
+  --spacing-xs: 0.25rem;
+  --spacing-sm: 0.5rem;
+  --spacing-md: 1rem;
+  --spacing-lg: 1.5rem;
+  --spacing-xl: 2rem;
+  --spacing-2xl: 3rem;
+  --spacing-3xl: 4rem;
+
+  /* Typography */
+  --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  --font-size-sm: 0.875rem;
+  --font-size-base: 1rem;
+  --font-size-lg: 1.125rem;
+  --font-size-xl: 1.25rem;
+  --font-size-2xl: 1.5rem;
+  --font-size-3xl: 1.875rem;
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  --line-height-tight: 1.25;
+  --line-height-normal: 1.5;
+  --line-height-loose: 1.75;
+
+  /* Responsive Breakpoints */
+  --breakpoint-sm: 640px;
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 1024px;
+  --breakpoint-xl: 1280px;
+
+  /* Animations */
+  --transition-fast: 150ms ease-in-out;
+  --transition-base: 200ms ease-in-out;
+  --transition-slow: 300ms ease-in-out;
+
+  /* Border Radius */
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+
+  /* Accessibility: Focus Ring (3:1 minimum contrast) */
+  --focus-ring: 0 0 0 3px var(--color-white), 0 0 0 5px var(--color-info);
+  --focus-ring-error: 0 0 0 3px var(--color-white), 0 0 0 5px var(--color-error);
 }
-```
 
-**Why this matters for CSS/HTML:** If type is `GEOCODING_AMBIGUOUS`, I show a dropdown list of 3–5 city matches (with country names for disambiguation). If type is `WEATHER_TIMEOUT`, I show a retry button. If type is `GEOCODING_NOT_FOUND`, I show inline help text below the input. Nexus-7's flat contract forces me to build a single brittle error template that won't survive production variance.
+/* Dark Mode Support */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg-primary: var(--color-gray-900);
+    --bg-secondary: var(--color-gray-800);
+    --bg-tertiary: var(--color-gray-700);
+    --text-primary: var(--color-gray-50);
+    --text-secondary: var(--color-gray-400);
+    --text-tertiary: var(--color-gray-500);
+    --border-color: var(--color-gray-700);
+    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -2px rgba(0, 0, 0, 0.3);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -4px rgba(0, 0, 0, 0.3);
+  }
+}
 
-**I'm requiring Nexus-7 to refine their error contract before I finalize the error state HTML.**
+/* GLOBAL STYLES */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
 
----
+html {
+  font-size: 16px;
+  scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
 
-### 2. **Timezone Handling Is Implicit, Not Explicit — Accessibility Violation**
+body {
+  font-family: var(--font-family);
+  font-size: var(--font-size-base);
+  line-height: var(--line-height-normal);
+  color: var(--text-primary);
+  background-color: var(--bg-primary);
+  transition: background-color var(--transition-base), color var(--transition-base);
+}
 
-Nexus-7's `fetchWeather()` call includes `&timezone=auto`, which relies on the Open-Meteo server guessing the user's timezone from their IP. 
+/* Container */
+.container {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 var(--spacing-md);
+}
 
-**This breaks accessibility in three ways:**
-- **Blind users using screen readers won't know what timezone the forecast is in** (Open-Meteo returns times in the guessed timezone, but the response doesn't confirm which one was used).
-- **Users in border regions or using VPNs will get wrong timezone silently** (no error signal).
-- **International users explicitly searching for a different city's weather get the server's wrong timezone guess, not the destination city's timezone.**
+@media (min-width: var(--breakpoint-md)) {
+  .container {
+    padding: 0 var(--spacing-lg);
+  }
+}
 
-**My requirement:** Nexus-7 must:
-1. Extract timezone from Open-Meteo's response (it returns `timezone` in the current weather object) and **pass it back in the data contract.**
-2. Display timezone explicitly in the location header: `"London, UK (GMT)" or "London, UK (UTC+0)"` — this is WCAG 2.1 Level AA (Principle 3: Understandable).
-3. Add `aria-label="Forecast for [City] in [Timezone]"` to the forecast grid.
+/* Accessibility: Screen Reader Only */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
 
-**This is a blocking accessibility requirement, not optional polish.**
+/* Accessibility: Skip Link */
+.skip-link {
+  position: absolute;
+  top: -40px;
+  left: 0;
+  background: var(--color-info);
+  color: var(--color-white);
+  padding: var(--spacing-md);
+  text-decoration: none;
+  z-index: 100;
+}
 
----
+.skip-link:focus {
+  top: 0;
+}
 
-### 3. **WMO Code Mapping Logic Placement — Coupling Risk**
+/* HEADER & SEARCH */
+.header {
+  background-color: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+  padding: var(--spacing-xl) 0;
+  box-shadow: var(--shadow-sm);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
 
-Nexus-7 proposed: *"WMO weather code mapping is pre-computed in a simple lookup object—O(1) code→emoji translation at render time."*
+.app-title {
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-bold);
+  margin-bottom: var(--spacing-lg);
+  color: var(--text-primary);
+}
 
-**My disagreement:** This is ambiguous about where the mapping lives. If it's in `weather-api.js` (the backend), then Nexus-7 owns UI semantics (wrong domain). If it's in the JavaScript rendering layer, then they're right.
+.search-container {
+  position: relative;
+}
 
-**My position:** The mapping must live in a **separate data file or constant** that's shared between:
-- **CSS** (I need WMO code → color variable mapping for the skeleton/loading state—e.g., code 61 (rain) → `--weather-rainy` → gray-blue color).
-- **JavaScript** (Nexus-7 needs code → emoji mapping for the DOM).
+.search-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
 
-**This eliminates duplication and keeps both layers in sync.** I'm proposing:
+.search-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
 
-```javascript
-// weather-codes.js (shared constant)
-const WMO_CODES = {
-  0: {emoji: "☀️", description: "Clear sky", color: "--weather-sunny"},
-  1: {emoji: "⛅", description: "Mainly clear", color: "--weather-partly-cloudy"},
-  61: {emoji: "🌧️", description: "Slight rain", color: "--weather-rainy"},
-  // ... etc
-};
-```
+.search-label {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
 
-**Both CSS and JS consume this single source of truth.** Nexus-7 is responsible for shipping this file; I'm responsible for the CSS color variables matching its keys.
+.search-input-wrapper {
+  display: flex;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+}
 
----
+.city-input {
+  flex: 1;
+  min-width: 200px;
+  padding: var(--spacing-md);
+  font-size: var(--font-size-base);
+  line-height: var(--line-height-normal);
+  color: var(--text-primary);
+  background-color: var(--bg-primary);
+  border: 2px solid var(--border-color);
+  border-radius: var(--radius-md);
+  transition: border-color var(--transition-base), box-shadow var(--transition-base);
+}
 
-## Where I Challenge Orion-SC (Not Blocking, But Important)
+.city-input:focus {
+  outline: none;
+  border-color: var(--color-info);
+  box-shadow: var(--focus-ring);
+}
 
-**Orion-SC's orchestration is sound, but one detail concerns me:**
+.city-input:placeholder-shown::placeholder {
+  color: var(--text-tertiary);
+}
 
-### **The DOM Injection Points Contract Is Underspecified**
+.city-input[aria-invalid="true"] {
+  border-color: var(--color-error);
+}
 
-Orion-SC said: *"Vortex-UI must build DOM queries expecting this shape; Nexus-7 must emit only this shape."*
+.city-input[aria-invalid="true"]:focus {
+  box-shadow: var(--focus-ring-error);
+}
 
-**My challenge:** They haven't specified *how* the DOM injection happens:
-- **Option A:** Nexus-7 calls `document.querySelector('[data-testid="current-temperature"]').textContent = data.current.temperature` (tight coupling, Nexus-7 owns HTML knowledge).
-- **Option B:** Vortex-UI defines an injection API like `updateWeatherUI(data)`, and Nexus-7 just calls it with the data contract (loose coupling, I own the DOM contract).
+.search-button {
+  padding: var(--spacing-md) var(--spacing-xl);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-white);
+  background-color: var(--color-info);
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color var(--transition-base), transform var(--transition-fast), box-shadow var(--transition-base);
+  box-shadow: var(--shadow-sm);
+}
 
-**Option B is correct for maintainability.** I'm accepting Orion-SC's contract, but **I need to clarify: I will export a `function updateWeatherUI(data)` that validates the data contract and injects it into my pre-built DOM structure. Nexus-7 calls this function, never touches `querySelector` directly.** This is the only way to guarantee my accessibility annotations (`aria-live`, `aria-label`, etc.) stay correct.
+.search-button:hover {
+  background-color: #1d4ed8;
+  box-shadow: var(--shadow-md);
+}
 
-**Orion-SC, can you confirm this injection pattern in Round 3?**
+.search-button:active {
+  transform: scale(0.98);
+}
 
----
+.search-button:focus {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
 
-## My Refined Position (Round 2 Lock-In)
+.search-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
 
-**I'm shipping:**
+/* Match List (City Suggestions) */
+.match-list {
+  position: absolute;
+  top: calc(100% + var(--spacing-xs));
+  left: 0;
+  right: 0;
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  max-height: 300px;
+  overflow-y: auto;
+  z-index: 20;
+}
 
-1. **Complete semantic HTML** with three states (ready/loading/error), including:
-   - City search input with `aria-label="Search for a city"`, `aria-autocomplete="list"` (if I build autocomplete), and explicit focus ring (min 3:1 contrast).
-   - Current weather card with `role="region" aria-label="Current weather for [city]"` and `aria-live="polite"` for dynamic updates.
-   - Forecast grid with `role="region"` and 5 cards, each labeled `aria-label="[Date]: [Condition], high [temp]°, low [temp]°"`.
-   - Error template with `role="alert" aria-live="assertive"` (urgent error states) for network failures.
+.match-item {
+  padding: var(--spacing-md);
+  cursor: pointer;
+  border-bottom: 1px solid var(--border-color);
+  transition: background-color var(--transition-fast);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
 
-2. **Production-grade CSS** supporting:
-   - Responsive layout (320px–1440px+ breakpoints).
-   - Loading skeleton with pulse animation (no JavaScript spinner dependency).
-   - All three error state variants (geocoding not found, ambiguous, network timeout).
-   - Color semantics mapped to WMO codes (shared via `weather-codes.js`).
-   - Dark mode support (via CSS `prefers-color-scheme` media query).
+.match-item:last-child {
+  border-bottom: none;
+}
 
-3. **DOM injection API** (`updateWeatherUI(data)`) that:
-   - Validates the data contract (throws on schema mismatch, logs to console with context).
-   - Injects data into pre-built slots.
-   - Handles null/undefined gracefully (shows "—" placeholders, not blank spaces).
-   - Updates only the nodes that changed (no full-DOM refresh, WCAG performance).
+.match-item:hover {
+  background-color: var(--bg-tertiary);
+}
 
-**Blocking requirements from Nexus-7:**
-- Refined error contract with `type` and `recoveryAction` fields.
-- Timezone explicit in data contract and DOM labels.
-- Shared `weather-codes.js` constant for emoji/color/description mapping.
+.match-item:focus-visible {
+  outline: none;
+  background-color: var(--bg-tertiary);
+  box-shadow: inset 0 0 0 2px var(--color-info);
+}
 
-**Blocking requirement from Orion-SC:**
-- Confirm injection pattern (I control DOM, Nexus-7 calls `updateWeatherUI(data)` as the interface).
+.match-item-text {
+  font-size: var(--font-size-base);
+  color: var(--text-primary);
+  font-weight: var(--font-weight-medium);
+}
 
----
+.match-item-country {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  margin-left: var(--spacing-md);
+}
 
-## Specific Questions for Round 3
+/* LOADING SKELETON */
+.loading-skeleton {
+  padding: var(--spacing-2xl) 0;
+}
 
-1. **Nexus-7:** Does Open-Meteo's response include the timezone it used in the `timezone=auto` call? (I need to verify they return it so I can display it.)
-2. **Orion-SC:** If Nexus-7's API call times out after 3 seconds, does the entire forecast fail, or can we show partial data (e.g., current weather without forecast)? (This affects my error state HTML structure.)
-3. **All:** Should the forecast show precipitation probability/amount in addition to min/max temp? (Affects grid column count and responsive layout.)
+.skeleton-location {
+  height: 60px;
+  background: linear-gradient(
+    90deg,
+    var(--bg-tertiary) 25%,
+    var(--bg-secondary) 50%,
+    var(--bg-tertiary) 75%
+  );
+  background-size: 200% 100%;
+  border-radius: var(--radius-md);
+  margin-bottom: var(--spacing-2xl);
+  animation: skeleton-pulse 2s infinite;
+}
 
-**I'm committed to delivering a production-ready, accessible UI. I'm not shipping until Nexus-7's contract is granular enough to handle real failure modes.**
+.skeleton-card {
+  background: linear-gradient(
+    90deg,
+    var(--bg-tertiary) 25%,
+    var(--bg-secondary) 50%,
+    var(--bg-tertiary) 75%
+  );
+  background-size: 200% 100%;
+  border-radius: var(--radius-lg);
+  margin-bottom: var(--spacing-lg);
+  animation: skeleton-pulse 2s infinite;
+}
+
+.skeleton-current {
+  height: 200px;
+  margin-bottom: var(--spacing-2xl);
+}
+
+.skeleton-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: var(--spacing-md);
+}
+
+.skeleton-grid .skeleton-card {
+  height: 180px;
+  margin-bottom: 0;
+}
+
+@media (min-width: var(--breakpoint-md)) {
+  .skeleton-grid {
+    grid-template-columns: repeat(5, 1fr);
+  }
+}
+
+@keyframes skeleton-pulse {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* ERROR STATE */
+.error-container {
+  background-color: var(--color-error);
+  color: var(--color-white);
+  padding: var(--spacing-lg);
+  margin: var(--spacing-md) 0;
+  border-radius: var(--radius-md);
+  animation: slideDown var(--transition-base);
+  box-shadow: var(--shadow-md);
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.error-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.error-header {
+  display: flex;
+  gap: var(--spacing-sm);
+  align-items: flex-start;
+}
+
+.error-icon {
+  font-size: var(--font-size-2xl);
+  flex-shrink: 0;
+}
+
+.error-message {
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--line-height-normal);
+}
+
+.error-actions {
+  display: flex;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+}
+
+.btn-retry,
+.btn-refine {
+  padding: var(--spacing-sm) var(--spacing-lg);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-error);
+  background-color: var(--color-white);
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+  white-space: nowrap;
+}
+
+.btn-retry:hover,
+.btn-refine:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.btn-retry:focus,
+.btn-refine:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--color-white), 0 0 0 5px var(--color-info);
+}
+
+.btn-retry:disabled,
+.btn-refine:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* MAIN CONTENT */
+.weather-content {
+  padding: var(--spacing-2xl) 0;
+  animation: fadeIn var(--transition-base);
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Location Header */
+.location-header {
+  margin-bottom: var(--spacing-2xl);
+  padding-bottom: var(--spacing-lg);
+  border-bottom: 2px solid var(--border-color);
+}
+
+.location-info {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.location-title {
+  font-size: var(--font-size-3xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--text-primary);
+  line-height: var(--line-height-tight);
+  margin: 0;
+}
+
+.location-name,
+.location-country {
+  font-weight: var(--font-weight-bold);
+}
+
+.separator {
+  margin: 0 var(--spacing-xs);
+}
+
+.location-timezone {
+  font-size: var(--font-size-lg);
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+/* WEATHER CARD */
+.weather-card
