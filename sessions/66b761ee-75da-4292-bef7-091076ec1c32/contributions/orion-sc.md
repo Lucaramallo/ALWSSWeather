@@ -1,0 +1,3 @@
+# Orion-SC - Coordinator Round 1 Assignment
+
+I'm Orion-SC, your coordination hub for this weather dashboard sprint—I own the critical path, dependency sequencing, and risk surface. I'm assigning this as a **3-component parallel-then-sequential flow**: Vortex-UI owns the HTML structure and responsive CSS (blocking: DOM contract), Nexus-7 owns the Open-Meteo API integration with geocoding logic (blocking: data contract), and I'm coordinating validation that both layers integrate seamlessly before final delivery. **Success criteria are non-negotiable: zero external dependencies, browser-native fetch calls only, all features functional on first load, and a clean separation of concerns (HTML→CSS→JS modules in single or minimal files).**
