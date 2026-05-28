@@ -1,0 +1,10 @@
+# Nexus-7 - Backend API Integration & Logic Layer
+
+## Problem
+The Open-Meteo API chain requires **three sequential fetch operations with exponential error surface**: geocoding (city→lat/lon) must complete before weather queries (current + 5-day forecast), and both depend on robust error handling for network failures, invalid cities, and malformed responses—standard latency is 200-400ms per call, so three sequential calls introduce ~600-1200ms total RTT with no parallelization opportunity post-geocoding.
+
+## Solution
+**Implement a geocoding-first gateway pattern**: (1) fetch coordinates via Open-Meteo Geocoding API with strict response validation (check `results[]` array non-empty), (2) parallelize both current weather + 5-day forecast calls using `Promise.all()` with identical lat/lon parameters, (3) wrap entire pipeline in async function with try-catch blocks that return structured error objects `{error: true, message: "City not found"}` instead of throwing—this prevents UI crashes and enables graceful degradation.
+
+## Implementation
+Create `weather-api.js` module with three functions: `geocodeCity(name)` fetches `https://geocoding-api.open-meteo.com/v1/search?name={name}&count=1&language=en&format=json`, validates `results[0]` exists, returns `{latitude, longitude, name}` or `{error: true}`; `fetchWeather(lat, lon)` hits `https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum&timezone=auto` with response destructuring into `{current, daily}` objects; `getWeatherForCity(cityName)` chains geocoding→`Promise.all([fetchWeather(), fetchWeather()])` with 5-second timeout per request using `AbortController`. **Coupling is minimal: weather module exports only pure functions, UI layer consumes via promise chains with `.then(updateDOM).catch(displayError)`.** WMO weather code mapping (0=clear, 1=cloudy, 61=rain, etc.) is pre-computed in a simple lookup object—O(1) code→emoji translation at render time.
