@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Open-Meteo Weather Dashboard - Real-time weather forecasts, no API key required">
+  <title>Weather Dashboard</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Skip to main content (accessibility) -->
+  <a href="#weather-content" class="skip-link">Skip to main content</a>
+
+  <!-- Header with Search -->
+  <header role="banner" class="header">
+    <div class="container">
+      <h1 class="app-title">⛅ Weather Dashboard</h1>
+      <div class="search-container">
+        <form id="search-form" class="search-form" novalidate>
+          <div class="search-wrapper">
+            <label for="city-search" class="search-label">Find weather for any city</label>
+            <div class="search-input-wrapper">
+              <input 
+                id="city-search" 
+                type="text" 
+                class="city-input"
+                aria-label="Search for a city"
+                aria-autocomplete="list"
+                aria-controls="match-list"
+                aria-expanded="false"
+                placeholder="Enter city name (e.g., London, New York, Tokyo)"
+                data-testid="city-search"
+                autocomplete="off"
+              />
+              <button id="search-btn" type="submit" class="search-button" aria-label="Search for weather">
+                Search
+              </button>
+            </div>
+          </div>
+
+          <!-- Geocoding Match List (for ambiguous searches - top 3 matches) -->
+          <div id="match-list" class="match-list" role="listbox" hidden aria-label="City suggestions">
+          </div>
+        </form>
+      </div>
+    </div>
+  </header>
+
+  <!-- Loading Skeleton State -->
+  <div id="loading-skeleton" class="loading-skeleton" data-testid="loading-skeleton" hidden aria-hidden="true">
+    <div class="container">
+      <div class="skeleton-location"></div>
+      <div class="skeleton-card skeleton-current"></div>
+      <div class="skeleton-grid">
+        <div class="skeleton-card"></div>
+        <div class="skeleton-card"></div>
+        <div class="skeleton-card"></div>
+        <div class="skeleton-card"></div>
+        <div class="skeleton-card"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Error Alert Region -->
+  <div id="error-container" class="error-container" role="alert" aria-live="assertive" aria-atomic="true" hidden>
+    <div class="container">
+      <div class="error-content">
+        <div class="error-header">
+          <span class="error-icon">⚠️</span>
+          <span id="error-message" class="error-message" data-testid="error-message"></span>
+        </div>
+        <div class="error-actions">
+          <button id="retry-btn" class="btn-retry" hidden aria-label="Retry search">
+            Retry Search
+          </button>
+          <button id="refine-btn" class="btn-refine" hidden aria-label="Refine your search">
+            Refine Search
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Weather Content -->
+  <main id="weather-content" class="weather-content" hidden>
+    <div class="container">
+      
+      <!-- Location Header -->
+      <header role="region" aria-label="Location information" class="location-header">
+        <div class="location-info">
+          <h2 class="location-title">
+            <span data-testid="location-name" class="location-name">—</span><span class="separator">,</span>
+            <span data-testid="location-country" class="location-country">—</span>
+          </h2>
+          <p class="location-timezone" data-testid="location-timezone" role="doc-subtitle">—</p>
+        </div>
+      </header>
+
+      <!-- Current Weather Card -->
+      <section role="region" aria-label="Current weather conditions" class="current-section">
+        <div class="weather-card current-weather" data-testid="current-weather" role="region" aria-live="polite" aria-atomic="true">
+          <div class="current-condition-visual">
+            <div class="emoji-container">
+              <span id="current-emoji" class="emoji-large" aria-hidden="true">☀️</span>
+            </div>
+            <div class="current-status">
+              <span data-testid="current-condition" class="condition-text">—</span>
+            </div>
+          </div>
+          <div class="current-details">
+            <div class="detail-row">
+              <span class="detail-label">Temperature</span>
+              <span class="detail-value" data-testid="current-temperature">—<span class="unit">°C</span></span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Humidity</span>
+              <span class="detail-value" data-testid="current-humidity">—<span class="unit">%</span></span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Wind Speed</span>
+              <span class="detail-value" data-testid="current-wind-speed">—<span class="unit">km/h</span></span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 5-Day Forecast Section -->
+      <section role="region" aria-label="5-day forecast" class="forecast-section">
+        <h2 class="forecast-title">5-Day Forecast</h2>
+        <div class="forecast-grid" data-testid="forecast-grid" role="grid" aria-label="Forecast cards">
+          <!-- Populated by JavaScript with 5 forecast cards -->
+        </div>
+        <div id="forecast-unavailable" class="forecast-unavailable" hidden role="status" aria-live="polite">
+          <p>Forecast data temporarily unavailable, but current weather is displayed above.</p>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- Scripts (no dependencies, vanilla JS only) -->
+  <script src="weather-codes.js"></script>
+  <script src="weather-api.js"></script>
+  <script src="weather-ui.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
